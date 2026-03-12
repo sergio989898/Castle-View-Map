@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Castle View Infrastructure Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:Arial,sans-serif; background:#1a1a2e; color:#eee; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+/* ── Login screen ─────────────────────────────────────── */
+#login-screen {
+  position:fixed; inset:0; background:#1a1a2e;
+  display:flex; align-items:center; justify-content:center;
+  z-index:9999;
+}
+.login-box {
+  background:#16213e; border:1px solid #0f3460;
+  border-radius:14px; padding:36px 40px; width:340px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.6);
+  display:flex; flex-direction:column; gap:14px;
+}
+.login-box h2 { font-size:20px; text-align:center; margin-bottom:4px; }
+.login-box p  { font-size:12px; color:#888; text-align:center; line-height:1.5; }
+.login-box input {
+  padding:10px 14px; border-radius:8px; border:1px solid #0f3460;
+  background:#0d1627; color:#eee; font-size:14px; outline:none;
+  transition:border-color 0.2s;
+}
+.login-box input:focus { border-color:#00b4ff; }
+.login-box input::placeholder { color:#555; }
+.login-btn {
+  padding:11px; border-radius:8px; border:none;
+  background:linear-gradient(135deg,#0f3460,#1a5276);
+  color:#eee; font-size:14px; font-weight:bold; cursor:pointer;
+  transition:opacity 0.2s;
+}
+.login-btn:hover { opacity:0.85; }
+.login-error { color:#ff3c3c; font-size:12px; text-align:center; display:none; }
+
+/* ── Config banner ────────────────────────────────────── */
+#config-banner {
+  background:#2d1b00; border-bottom:2px solid #ffa000;
+  padding:10px 16px; font-size:12px; color:#ffa000;
+  display:none; align-items:center; gap:10px; flex-shrink:0;
+}
+#config-banner a { color:#ffd200; font-weight:bold; cursor:pointer; text-decoration:underline; }
+
+/* ── Header ───────────────────────────────────────────── */
+header {
+  background:#16213e; border-bottom:2px solid #0f3460;
+  padding:10px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0;
+}
+header h1 { font-size:16px; font-weight:bold; }
+.sync-dot {
+  width:8px; height:8px; border-radius:50%; background:#555;
+  transition:background 0.3s; flex-shrink:0;
+  title:'sync status';
+}
+.sync-dot.ok   { background:#4caf50; box-shadow:0 0 6px #4caf50; }
+.sync-dot.busy { background:#ffa000; box-shadow:0 0 6px #ffa000; }
+.sync-dot.err  { background:#ff3c3c; box-shadow:0 0 6px #ff3c3c; }
+.counts { margin-left:auto; display:flex; gap:8px; align-items:center; }
+.badge { font-size:12px; padding:3px 10px; border-radius:12px; font-weight:bold; }
+.badge.b { background:rgba(0,180,255,0.2);  color:#00b4ff; border:1px solid #00b4ff; }
+.badge.m { background:rgba(255,160,0,0.2);  color:#ffa000; border:1px solid #ffa000; }
+.badge.p { background:rgba(255,60,60,0.2);  color:#ff3c3c; border:1px solid #ff3c3c; }
+
+/* ── Layout ───────────────────────────────────────────── */
+.main { display:flex; flex:1; overflow:hidden; }
+
+.sidebar {
+  width:200px; background:#16213e; border-right:2px solid #0f3460;
+  padding:14px; display:flex; flex-direction:column; gap:8px;
+  flex-shrink:0; overflow-y:auto;
+}
+.stitle { font-size:10px; letter-spacing:0.12em; color:#888; text-transform:uppercase; margin-bottom:4px; }
+
+.tool-btn {
+  display:flex; align-items:center; gap:10px; padding:10px 12px;
+  border-radius:8px; border:2px solid #333; background:rgba(255,255,255,0.05);
+  cursor:pointer; color:#eee; font-size:14px; font-weight:bold;
+  transition:all 0.15s; width:100%; text-align:left;
+}
+.tool-btn:hover { background:rgba(255,255,255,0.1); }
+.tool-btn.active.b { border-color:#00b4ff; background:rgba(0,180,255,0.12); color:#00b4ff; }
+.tool-btn.active.m { border-color:#ffa000; background:rgba(255,160,0,0.12); color:#ffa000; }
+.tool-btn.active.p { border-color:#ff3c3c; background:rgba(255,60,60,0.12); color:#ff3c3c; }
+
+.idot { width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0; }
+.idot.b { background:rgba(0,180,255,0.2);border:2px solid #00b4ff; }
+.idot.m { background:rgba(255,160,0,0.2);border:2px solid #ffa000; }
+.idot.p { background:rgba(255,60,60,0.2);border:2px solid #ff3c3c; }
+
+.div { height:1px;background:#0f3460;margin:4px 0; }
+
+.act-btn {
+  padding:8px;border-radius:6px;border:1px solid #0f3460;
+  background:transparent;color:#aaa;font-size:12px;cursor:pointer;
+  transition:all 0.15s;width:100%;
+}
+.act-btn:hover        { border-color:#eee;color:#eee;background:rgba(255,255,255,0.05); }
+.act-btn.danger:hover { border-color:#ff3c3c;color:#ff3c3c; }
+.act-btn.pdf  { border-color:rgba(180,100,255,0.5);color:#b464ff; }
+.act-btn.pdf:hover    { border-color:#b464ff;background:rgba(180,100,255,0.1); }
+.act-btn.logout { border-color:rgba(255,100,100,0.3);color:#ff8888; }
+.act-btn.logout:hover { border-color:#ff3c3c;color:#ff3c3c; }
+
+.hint { font-size:11px;color:#666;line-height:1.5; }
+.mpill {
+  font-size:11px;padding:5px 8px;border-radius:4px;
+  background:rgba(255,255,255,0.05);border:1px solid #333;color:#888;margin-bottom:8px;
+}
+.mpill.b { background:rgba(0,180,255,0.1);border-color:#00b4ff;color:#00b4ff; }
+.mpill.m { background:rgba(255,160,0,0.1);border-color:#ffa000;color:#ffa000; }
+.mpill.p { background:rgba(255,60,60,0.1);border-color:#ff3c3c;color:#ff3c3c; }
+
+#mapwrap { flex:1;position:relative; }
+#map { width:100%;height:100%; }
+
+/* ── Marker popup ─────────────────────────────────────── */
+.popup {
+  position:absolute;background:#16213e;border:1px solid #0f3460;
+  border-radius:8px;padding:10px 12px;font-size:12px;z-index:1000;
+  min-width:165px;box-shadow:0 4px 20px rgba(0,0,0,0.5);display:none;
+}
+.popup .ptitle { font-weight:bold;font-size:13px;margin-bottom:4px; }
+.popup .pcoords { color:#888;font-size:10px;margin-bottom:8px;font-family:monospace; }
+.dbtn {
+  width:100%;padding:5px;border-radius:4px;
+  border:1px solid rgba(255,60,60,0.4);background:rgba(255,60,60,0.1);
+  color:#ff3c3c;font-size:11px;cursor:pointer;margin-top:4px;
+}
+.dbtn:hover { background:rgba(255,60,60,0.2); }
+.rbtn {
+  width:100%;padding:5px;border-radius:4px;
+  border:1px solid rgba(255,210,0,0.5);background:rgba(255,210,0,0.08);
+  color:#ffd200;font-size:11px;cursor:pointer;margin-top:4px;
+}
+.rbtn:hover { background:rgba(255,210,0,0.2); }
+.rbtn.on { background:rgba(255,210,0,0.22);border-color:#ffd200;font-weight:bold; }
+
+/* ── Toast ────────────────────────────────────────────── */
+#toast {
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:#222;border:1px solid #444;border-radius:8px;
+  padding:10px 20px;font-size:13px;color:#eee;
+  z-index:99999;opacity:0;transition:opacity 0.3s;pointer-events:none;white-space:nowrap;
+}
+#toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<!-- ── Login Screen ──────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-box">
+    <h2>🗺 Castle View Map</h2>
+    <p>Team access only.<br>Enter the shared password to continue.</p>
+    <input type="password" id="pw-input" placeholder="Enter team password…" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <button class="login-btn" onclick="doLogin()">Enter Map</button>
+    <div class="login-error" id="login-error">Incorrect password. Try again.</div>
+  </div>
+</div>
+
+<!-- ── Config Banner ─────────────────────────────────── -->
+<div id="config-banner">
+  ⚠ Supabase not configured — running in <b>local-only mode</b>.
+  <a onclick="showConfigHelp()">How to connect cloud database →</a>
+</div>
+
+<!-- ── Header ────────────────────────────────────────── -->
+<header>
+  <div>
+    <h1>🗺 Castle View Infrastructure Map</h1>
+    <div style="font-size:11px;color:#888;margin-top:2px;">Gloucester, MA</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;margin-left:12px;">
+    <div class="sync-dot" id="sync-dot" title="Database sync status"></div>
+    <span style="font-size:10px;color:#666;" id="sync-label">not connected</span>
+  </div>
+  <div class="counts">
+    <span class="badge b" id="cb">🌊 0</span>
+    <span class="badge m" id="cm">⚙️ 0</span>
+    <span class="badge p" id="cp">⚠️ 0</span>
+  </div>
+</header>
+
+<!-- ── Main ──────────────────────────────────────────── -->
+<div class="main">
+  <div class="sidebar">
+    <div class="stitle">Place Marker</div>
+    <button class="tool-btn b" id="btn-b" onclick="setMode('b')">
+      <div class="idot b">🌊</div><span>Catch Basin</span>
+    </button>
+    <button class="tool-btn m" id="btn-m" onclick="setMode('m')">
+      <div class="idot m">⚙️</div><span>Manhole Cover</span>
+    </button>
+    <button class="tool-btn p" id="btn-p" onclick="setMode('p')">
+      <div class="idot p">⚠️</div><span>Pothole</span>
+    </button>
+
+    <div class="div"></div>
+    <div class="stitle">Export</div>
+    <button class="act-btn pdf" onclick="exportPDF()">🖨 Export PDF</button>
+    <button class="act-btn" onclick="exportCSV()">⬇ Export CSV</button>
+
+    <div class="div"></div>
+    <button class="act-btn danger" onclick="clearAll()">✕ Clear All</button>
+    <button class="act-btn logout" onclick="doLogout()">⏏ Lock Map</button>
+
+    <div style="margin-top:12px;">
+      <div class="stitle">Active Tool</div>
+      <div class="mpill" id="mpill">None selected</div>
+      <div class="hint">Select a tool, click the map to place.<br><br>
+        <b style="color:#ccc">Drag</b> to reposition.<br>
+        <b style="color:#ccc">Click</b> to edit or delete.<br><br>
+        <span style="color:#4caf50">●</span> Markers sync to cloud automatically.</div>
+    </div>
+  </div>
+
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div class="popup" id="popup">
+      <div class="ptitle" id="ptitle"></div>
+      <div class="pcoords" id="pcoords"></div>
+      <button class="rbtn" id="rbtn" onclick="toggleRepair()">⚠ Needs Repair</button>
+      <button class="dbtn" onclick="deleteSelected()">✕ Remove Marker</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════╗
+// ║              CONFIGURATION — EDIT THESE                 ║
+// ╚══════════════════════════════════════════════════════════╝
+const CONFIG = {
+  // 1. Set your team password here
+  PASSWORD: 'castleview2024',
+
+  // 2. After creating your Supabase project, fill these in:
+  SUPABASE_URL: '',        // e.g. 'https://xyzxyz.supabase.co'
+  SUPABASE_ANON_KEY: '',   // your project's anon/public key
+};
+// ╔══════════════════════════════════════════════════════════╗
+// ║                   END CONFIGURATION                     ║
+// ╚══════════════════════════════════════════════════════════╝
+
+const TYPES = {
+  b: { emoji:'🌊', label:'Catch Basin',   color:'#00b4ff' },
+  m: { emoji:'⚙️', label:'Manhole Cover', color:'#ffa000' },
+  p: { emoji:'⚠️', label:'Pothole',       color:'#ff3c3c' }
+};
+
+let supabase = null;
+let sbClient = null, mode = null, markers = [], selected = null;
+const counts = {b:0, m:0, p:0};
+
+// ── Toast ─────────────────────────────────────────────────
+function toast(msg, duration=2800) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), duration);
+}
+
+// ── Sync indicator ────────────────────────────────────────
+function setSyncStatus(state, label) {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  dot.className = 'sync-dot ' + state;
+  lbl.textContent = label;
+}
+
+// ── Login ─────────────────────────────────────────────────
+function doLogin() {
+  const pw = document.getElementById('pw-input').value;
+  if (pw === CONFIG.PASSWORD) {
+    document.getElementById('login-screen').style.display = 'none';
+    sessionStorage.setItem('cv_auth', '1');
+    initApp();
+  } else {
+    document.getElementById('login-error').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-input').focus();
+  }
+}
+
+function doLogout() {
+  sessionStorage.removeItem('cv_auth');
+  location.reload();
+}
+
+// ── Supabase init ─────────────────────────────────────────
+async function initSupabase() {
+  if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
+    document.getElementById('config-banner').style.display = 'flex';
+    setSyncStatus('err', 'local only');
+    return false;
+  }
+  try {
+    // Load latest Supabase SDK — supports both old 'eyJ' and new 'sb_publishable' key formats
+    await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js');
+
+    // New sb_publishable keys require the storageKey option to avoid conflicts
+    const options = {};
+    if (CONFIG.SUPABASE_ANON_KEY.startsWith('sb_publishable')) {
+      options.auth = {
+        persistSession: true,
+        storageKey: 'castleview-supabase-auth',
+        autoRefreshToken: true,
+        detectSessionInUrl: false
+      };
+    }
+
+    // SDK may expose createClient directly or under window.supabase
+    const createClient = (typeof supabaseJs !== 'undefined' && supabaseJs.createClient)
+      ? supabaseJs.createClient
+      : (window.supabase && window.supabase.createClient)
+      ? window.supabase.createClient
+      : window.supabaseJs && window.supabaseJs.createClient;
+
+    if (!createClient) throw new Error('Supabase SDK did not load correctly');
+    sbClient = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, options);
+
+    // Test the connection with a simple query
+    const { error } = await sbClient.from('markers').select('id').limit(1);
+    if (error) throw error;
+
+    setSyncStatus('ok', 'connected');
+    return true;
+  } catch(e) {
+    console.error('Supabase init failed', e);
+    setSyncStatus('err', 'connection failed');
+    document.getElementById('config-banner').style.display = 'flex';
+    toast('⚠ Connection failed: ' + (e.message || 'check your URL and key'));
+    return false;
+  }
+}
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+// ── Map init ──────────────────────────────────────────────
+const map = L.map('map').setView([42.6500724, -70.7013882], 17);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© OpenStreetMap contributors', maxZoom:19
+}).addTo(map);
+
+map.on('zoomend', () => markers.forEach(mk => mk.setIcon(makeIcon(mk._type, mk._repair))));
+map.on('click', function(e) {
+  hidePopup();
+  if (!mode) return;
+  placeMarker(mode, e.latlng.lat, e.latlng.lng, false, null, true);
+});
+
+// ── App init ──────────────────────────────────────────────
+async function initApp() {
+  const connected = await initSupabase();
+  if (connected) {
+    await loadMarkersFromCloud();
+    subscribeToChanges();
+  } else {
+    loadMarkersFromLocal();
+  }
+}
+
+// ── Tool mode ─────────────────────────────────────────────
+function setMode(t) {
+  mode = (mode === t) ? null : t;
+  ['b','m','p'].forEach(k => document.getElementById('btn-'+k).classList.remove('active'));
+  const pill = document.getElementById('mpill');
+  if (mode) {
+    document.getElementById('btn-'+mode).classList.add('active');
+    pill.className = 'mpill '+mode;
+    pill.textContent = TYPES[mode].emoji+' '+TYPES[mode].label;
+    map.getContainer().style.cursor = 'crosshair';
+  } else {
+    pill.className = 'mpill';
+    pill.textContent = 'None selected';
+    map.getContainer().style.cursor = '';
+  }
+  hidePopup();
+}
+
+// ── Icon rendering ────────────────────────────────────────
+function iconSize() {
+  const z = map.getZoom();
+  return Math.round(Math.max(10, Math.min(44, (z - 13) * 6)));
+}
+
+function makeIcon(t, repair) {
+  const c = TYPES[t], s = iconSize(), fs = Math.round(s*0.55), ts = Math.round(s*0.45);
+  const tri = repair
+    ? `<div style="position:absolute;top:${-Math.round(ts*0.4)}px;right:${-Math.round(ts*0.4)}px;width:0;height:0;border-left:${ts/2}px solid transparent;border-right:${ts/2}px solid transparent;border-bottom:${ts}px solid #ffd200;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));z-index:2"></div>`
+    : '';
+  return L.divIcon({
+    className:'',
+    html:`<div style="position:relative;width:${s}px;height:${s}px;background:${c.color}33;border:2px solid ${c.color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${fs}px;box-shadow:0 0 6px ${c.color}88,0 2px 5px rgba(0,0,0,0.5);transform:translate(-50%,-50%)">${c.emoji}${tri}</div>`,
+    iconSize:[s,s], iconAnchor:[s/2,s/2]
+  });
+}
+
+// ── Place marker on map ───────────────────────────────────
+function placeMarker(type, lat, lng, repair, id, saveToCloud) {
+  const mk = L.marker([lat,lng], {icon:makeIcon(type, repair), draggable:true}).addTo(map);
+  mk._id     = id || ('local_'+Date.now());
+  mk._type   = type;
+  mk._lat    = lat;
+  mk._lng    = lng;
+  mk._repair = repair || false;
+
+  mk.on('dragstart', () => { map.dragging.disable(); hidePopup(); });
+  mk.on('dragend', async function() {
+    map.dragging.enable();
+    const pos = this.getLatLng();
+    this._lat = pos.lat; this._lng = pos.lng;
+    hidePopup();
+    await dbUpdate(this);
+  });
+  mk.on('click', function(ev) {
+    L.DomEvent.stopPropagation(ev);
+    showPopup(this, ev.originalEvent);
+  });
+
+  markers.push(mk);
+  counts[type]++;
+  updateCounts();
+
+  if (saveToCloud) dbInsert(mk);
+  return mk;
+}
+
+// ── Cloud DB operations ───────────────────────────────────
+async function dbInsert(mk) {
+  if (!sbClient) { saveLocal(); return; }
+  setSyncStatus('busy', 'saving…');
+  try {
+    const { data, error } = await sbClient
+      .from('markers')
+      .insert([{ type: mk._type, lat: mk._lat, lng: mk._lng, repair: mk._repair }])
+      .select();
+    if (error) throw error;
+    mk._id = data[0].id;
+    setSyncStatus('ok', 'synced');
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('err', 'sync failed');
+    toast('⚠ Cloud save failed — check Supabase config');
+  }
+}
+
+async function dbUpdate(mk) {
+  if (!sbClient) { saveLocal(); return; }
+  if (String(mk._id).startsWith('local_')) { await dbInsert(mk); return; }
+  setSyncStatus('busy', 'saving…');
+  try {
+    const { error } = await sbClient
+      .from('markers')
+      .update({ lat: mk._lat, lng: mk._lng, repair: mk._repair })
+      .eq('id', mk._id);
+    if (error) throw error;
+    setSyncStatus('ok', 'synced');
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('err', 'sync failed');
+  }
+}
+
+async function dbDelete(mk) {
+  if (!sbClient) { saveLocal(); return; }
+  if (String(mk._id).startsWith('local_')) return;
+  try {
+    const { error } = await sbClient.from('markers').delete().eq('id', mk._id);
+    if (error) throw error;
+    setSyncStatus('ok', 'synced');
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('err', 'sync failed');
+  }
+}
+
+async function loadMarkersFromCloud() {
+  setSyncStatus('busy', 'loading…');
+  try {
+    const { data, error } = await sbClient.from('markers').select('*').order('created_at');
+    if (error) throw error;
+    data.forEach(d => placeMarker(d.type, parseFloat(d.lat), parseFloat(d.lng), d.repair, d.id, false));
+    setSyncStatus('ok', 'synced · '+data.length+' markers');
+    toast('✓ Loaded '+data.length+' marker'+(data.length!==1?'s':'')+' from cloud');
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('err', 'load failed');
+    toast('⚠ Could not load from cloud');
+  }
+}
+
+// Real-time subscription — other team members' changes appear instantly
+function subscribeToChanges() {
+  sbClient.channel('markers-changes')
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'markers' }, payload => {
+      const d = payload.new;
+      // Don't add if we already have it (our own insert)
+      if (!markers.find(m => m._id === d.id)) {
+        placeMarker(d.type, parseFloat(d.lat), parseFloat(d.lng), d.repair, d.id, false);
+        toast('📍 New marker added by teammate');
+      }
+    })
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'markers' }, payload => {
+      const d = payload.new;
+      const mk = markers.find(m => m._id === d.id);
+      if (mk) {
+        mk._lat = parseFloat(d.lat); mk._lng = parseFloat(d.lng); mk._repair = d.repair;
+        mk.setLatLng([mk._lat, mk._lng]);
+        mk.setIcon(makeIcon(mk._type, mk._repair));
+      }
+    })
+    .on('postgres_changes', { event:'DELETE', schema:'public', table:'markers' }, payload => {
+      const mk = markers.find(m => m._id === payload.old.id);
+      if (mk) {
+        map.removeLayer(mk);
+        counts[mk._type]--;
+        markers = markers.filter(m => m._id !== mk._id);
+        updateCounts();
+      }
+    })
+    .subscribe();
+}
+
+// ── Local fallback ────────────────────────────────────────
+function saveLocal() {
+  const data = markers.map(m => ({id:m._id,type:m._type,lat:m._lat,lng:m._lng,repair:m._repair}));
+  try { localStorage.setItem('castleview_markers', JSON.stringify(data)); } catch(e) {}
+}
+
+function loadMarkersFromLocal() {
+  try {
+    const raw = localStorage.getItem('castleview_markers');
+    if (raw) {
+      JSON.parse(raw).forEach(d => placeMarker(d.type, d.lat, d.lng, d.repair, d.id, false));
+      toast('📂 Loaded '+markers.length+' local marker'+(markers.length!==1?'s':''));
+    }
+  } catch(e) {}
+}
+
+// ── Popup ─────────────────────────────────────────────────
+function showPopup(marker, evt) {
+  selected = marker;
+  const c = TYPES[marker._type];
+  const wrap = document.getElementById('mapwrap');
+  const rect = wrap.getBoundingClientRect();
+  const pop  = document.getElementById('popup');
+  document.getElementById('ptitle').textContent = c.emoji+' '+c.label;
+  document.getElementById('ptitle').style.color  = c.color;
+  document.getElementById('pcoords').textContent = marker._lat.toFixed(6)+', '+marker._lng.toFixed(6);
+  const rbtn = document.getElementById('rbtn');
+  rbtn.classList.toggle('on', marker._repair);
+  rbtn.textContent = marker._repair ? '✓ Needs Repair (on)' : '⚠ Needs Repair';
+  let x = evt.clientX - rect.left + 12;
+  let y = evt.clientY - rect.top  - 10;
+  if (x+180 > rect.width) x -= 190;
+  pop.style.left=x+'px'; pop.style.top=y+'px'; pop.style.display='block';
+}
+
+function hidePopup() { document.getElementById('popup').style.display='none'; selected=null; }
+
+async function toggleRepair() {
+  if (!selected) return;
+  selected._repair = !selected._repair;
+  selected.setIcon(makeIcon(selected._type, selected._repair));
+  const rbtn = document.getElementById('rbtn');
+  rbtn.classList.toggle('on', selected._repair);
+  rbtn.textContent = selected._repair ? '✓ Needs Repair (on)' : '⚠ Needs Repair';
+  await dbUpdate(selected);
+}
+
+async function deleteSelected() {
+  if (!selected) return;
+  const mk = selected;
+  counts[mk._type]--;
+  map.removeLayer(mk);
+  markers = markers.filter(m => m._id !== mk._id);
+  updateCounts(); hidePopup();
+  await dbDelete(mk);
+}
+
+function updateCounts() {
+  document.getElementById('cb').textContent='🌊 '+counts.b;
+  document.getElementById('cm').textContent='⚙️ '+counts.m;
+  document.getElementById('cp').textContent='⚠️ '+counts.p;
+}
+
+async function clearAll() {
+  if (!markers.length) return;
+  if (!confirm('Remove ALL '+markers.length+' markers from the cloud? This affects all team members.')) return;
+  if (sbClient) {
+    setSyncStatus('busy', 'deleting…');
+    await sbClient.from('markers').delete().neq('id', 0);
+    setSyncStatus('ok', 'cleared');
+  }
+  markers.forEach(m => map.removeLayer(m));
+  markers=[]; counts.b=counts.m=counts.p=0;
+  updateCounts(); hidePopup();
+  saveLocal();
+}
+
+// ── Export CSV ────────────────────────────────────────────
+function exportCSV() {
+  if (!markers.length) { toast('No markers placed yet'); return; }
+  let csv='type,label,latitude,longitude,needs_repair\n';
+  markers.forEach(m => csv+=`${m._type},${TYPES[m._type].label},${m._lat.toFixed(7)},${m._lng.toFixed(7)},${m._repair}\n`);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='castle-view-infrastructure.csv'; a.click();
+}
+
+// ── Export PDF ────────────────────────────────────────────
+async function exportPDF() {
+  hidePopup();
+  toast('⏳ Generating PDF…', 8000);
+  await new Promise(r => setTimeout(r, 600));
+  try {
+    const mapEl = document.getElementById('map');
+    const canvas = await html2canvas(mapEl, {useCORS:true,allowTaint:true,scale:2,backgroundColor:'#1a1a2e',logging:false});
+    const {jsPDF} = window.jspdf;
+    const mw = mapEl.offsetWidth, mh = mapEl.offsetHeight;
+    const pdf = new jsPDF({orientation: mw>mh?'landscape':'portrait', unit:'px', format:[mw, mh+50]});
+    pdf.setFillColor(22,33,62); pdf.rect(0,0,mw,40,'F');
+    pdf.setTextColor(200,220,255); pdf.setFontSize(14);
+    pdf.text('Castle View Infrastructure Map — Gloucester, MA', 12, 26);
+    pdf.setFontSize(9); pdf.setTextColor(120,140,180);
+    pdf.text('Generated: '+new Date().toLocaleString()+'   |   Markers: '+markers.length, 12, 38);
+    pdf.addImage(canvas.toDataURL('image/jpeg',0.92),'JPEG',0,40,mw,mh);
+    pdf.setFontSize(8); pdf.setTextColor(150,150,150);
+    pdf.text('🌊 Catch Basin: '+counts.b+'   ⚙️ Manhole: '+counts.m+'   ⚠️ Pothole: '+counts.p, 12, mh+47);
+    pdf.save('castle-view-infrastructure.pdf');
+    toast('✓ PDF saved!');
+  } catch(e) {
+    console.error(e);
+    toast('⚠ PDF failed — use browser Print → Save as PDF');
+  }
+}
+
+// ── Config help ───────────────────────────────────────────
+function showConfigHelp() {
+  alert(
+    'To connect the cloud database:\n\n' +
+    '1. Go to supabase.com and create a free account\n' +
+    '2. Create a new project (any name)\n' +
+    '3. In the SQL Editor, run this query:\n\n' +
+    '   CREATE TABLE markers (\n' +
+    '     id bigint generated always as identity primary key,\n' +
+    '     created_at timestamptz default now(),\n' +
+    '     type text not null,\n' +
+    '     lat float8 not null,\n' +
+    '     lng float8 not null,\n' +
+    '     repair boolean default false\n' +
+    '   );\n\n' +
+    '   ALTER TABLE markers ENABLE ROW LEVEL SECURITY;\n' +
+    '   CREATE POLICY "allow all" ON markers FOR ALL USING (true);\n\n' +
+    '4. Go to Settings → API and copy:\n' +
+    '   - Project URL  →  paste into SUPABASE_URL in the HTML file\n' +
+    '   - anon/public key  →  paste into SUPABASE_ANON_KEY\n\n' +
+    '5. Change the PASSWORD in the CONFIG section too!\n\n' +
+    'That\'s it — your map will sync across all devices.'
+  );
+}
+
+// ── Boot ──────────────────────────────────────────────────
+if (sessionStorage.getItem('cv_auth') === '1') {
+  document.getElementById('login-screen').style.display = 'none';
+  initApp();
+}
+</script>
+</body>
+</html>
